@@ -1,5 +1,8 @@
 import requests
-import cookielib
+try:
+	import cookielib
+except:
+	import http.cookiejar
 import bs4
 import time
 import re
@@ -10,7 +13,7 @@ import json
 import logging
 import datetime
 import ctypes
-from colorama import init, Fore, Back, Style
+from colorama import init, Fore
 init()
 
 os.chdir(os.path.abspath(os.path.dirname(sys.argv[0])))
@@ -26,26 +29,36 @@ if sys.platform.startswith('win32'):
 
 logging.warning(Fore.GREEN + "WELCOME TO IDLE MASTER" + Fore.RESET)
 
+def wait_for_confirmation():
+	msg = "Press Enter to continue..."
+	try:
+		if sys.version[0] >= "3":
+			input(msg)
+		else:
+			raw_input(msg)
+	except:
+		pass
+
 try:
 	authData={}
 	authData["sort"]=""
 	authData["steamparental"]=""
 	authData["hasPlayTime"]="false"
-	execfile("./settings.txt",authData)
+	exec(open("./settings.txt").read(), authData)
 	myProfileURL = "http://steamcommunity.com/profiles/"+authData["steamLogin"][:17]
 except:
 	logging.warning(Fore.RED + "Error loading config file" + Fore.RESET)
-	raw_input("Press Enter to continue...")
+	wait_for_confirmation()
 	sys.exit()
-	
+
 if not authData["sessionid"]:
 	logging.warning(Fore.RED + "No sessionid set" + Fore.RESET)
-	raw_input("Press Enter to continue...")
+	wait_for_confirmation()
 	sys.exit()
-	
+
 if not authData["steamLogin"]:
 	logging.warning(Fore.RED + "No steamLogin set" + Fore.RESET)
-	raw_input("Press Enter to continue...")
+	wait_for_confirmation()
 	sys.exit()
 
 def generateCookies():
@@ -54,7 +67,7 @@ def generateCookies():
 		cookies = dict(sessionid=authData["sessionid"], steamLogin=authData["steamLogin"], steamparental=authData["steamparental"])
 	except:
 		logging.warning(Fore.RED + "Error setting cookies" + Fore.RESET)
-		raw_input("Press Enter to continue...")
+		wait_for_confirmation()
 		sys.exit()
 
 	return cookies
@@ -79,10 +92,10 @@ def idleOpen(appID):
 		elif sys.platform.startswith('darwin'):
 			process_idle = subprocess.Popen(["./steam-idle", str(appID)])
 		elif sys.platform.startswith('linux'):
-			process_idle = subprocess.Popen(["python2", "steam-idle.py", str(appID)])
+			process_idle = subprocess.Popen(["python", "steam-idle.py", str(appID)])
 	except:
 		logging.warning(Fore.RED + "Error launching steam-idle with game ID " + str(appID) + Fore.RESET)
-		raw_input("Press Enter to continue...")
+		wait_for_confirmation()
 		sys.exit()
 
 def idleClose(appID):
@@ -93,7 +106,7 @@ def idleClose(appID):
 		logging.warning(getAppName(appID) + " took " + Fore.GREEN + str(datetime.timedelta(seconds=total_time)) + Fore.RESET + " to idle.")
 	except:
 		logging.warning(Fore.RED + "Error closing game. Exiting." + Fore.RESET)
-		raw_input("Press Enter to continue...")
+		wait_for_confirmation()
 		sys.exit()
 
 def chillOut(appID):
@@ -113,22 +126,17 @@ def chillOut(appID):
 			logging.warning("Still unable to find drop info.")
 	# Resume operations.
 	idleOpen(appID)
-	
-def getAppName(appID):
-	try:
-		api = requests.get("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&filters=basic")
-		api_data = json.loads(api.text)
-		return Fore.CYAN + api_data[str(appID)]["data"]["name"].encode('ascii', 'ignore') + Fore.RESET
-	except:
-		return Fore.CYAN + "App "+str(appID) + Fore.RESET
 
-def getPlainAppName(appid):
+def getPlainAppName(appID):
 	try:
-		api = requests.get("http://store.steampowered.com/api/appdetails/?appids=" + str(appID) + "&filters=basic")
+		api = requests.get("http://store.steampowered.com/api/appdetails/?filters=basic&appids=" + str(appID))
 		api_data = json.loads(api.text)
-		return api_data[str(appID)]["data"]["name"].encode('ascii', 'ignore')
+		return api_data[str(appID)]["data"]["name"].encode('ascii', 'ignore').decode()
 	except:
-		return "App "+str(appID)
+		return "App " + str(appID)
+
+def getAppName(appID):
+	return Fore.CYAN + getPlainAppName(appID) + Fore.RESET
 
 def get_blacklist():
 	try:
@@ -136,7 +144,7 @@ def get_blacklist():
 			lines = f.readlines()
 		blacklist = [int(n.strip()) for n in lines]
 	except:
-		blacklist = [];
+		blacklist = []
 
 	if not blacklist:
 		logging.warning("No games have been blacklisted")
@@ -150,7 +158,7 @@ try:
 	r = requests.get(myProfileURL+"/badges/",cookies=cookies)
 except:
 	logging.warning(Fore.RED + "Error reading badge page" + Fore.RESET)
-	raw_input("Press Enter to continue...")
+	wait_for_confirmation()
 	sys.exit()
 
 try:
@@ -159,7 +167,7 @@ try:
 	badgeSet = badgePageData.find_all("div",{"class": "badge_title_stats"})
 except:
 	logging.warning(Fore.RED + "Error finding drop info" + Fore.RESET)
-	raw_input("Press Enter to continue...")
+	wait_for_confirmation()
 	sys.exit()
 
 # For profiles with multiple pages
@@ -179,7 +187,7 @@ except:
 userinfo = badgePageData.find("div",{"class": "user_avatar"})
 if not userinfo:
 	logging.warning(Fore.RED + "Invalid cookie data, cannot log in to Steam" + Fore.RESET)
-	raw_input("Press Enter to continue...")
+	wait_for_confirmation()
 	sys.exit()
 
 blacklist = get_blacklist()
@@ -237,7 +245,7 @@ if authData["sort"] in sortValues:
 		games = sorted(badgesLeft, key=getKey, reverse=False)
 else:
 	logging.warning(Fore.RED + "Invalid sort value" + Fore.RESET)
-	raw_input("Press Enter to continue...")
+	wait_for_confirmation()
 	sys.exit()
 
 for appID, drops, value in games:
@@ -289,4 +297,4 @@ for appID, drops, value in games:
 	logging.warning(Fore.GREEN + "Successfully completed idling cards for " + getAppName(appID) + Fore.RESET)
 
 logging.warning(Fore.GREEN + "Successfully completed idling process" + Fore.RESET)
-raw_input("Press Enter to continue...")
+wait_for_confirmation()
