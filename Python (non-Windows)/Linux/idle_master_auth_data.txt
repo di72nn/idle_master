@@ -1,0 +1,4 @@
+[cookies]
+sessionid = value_goes_here
+steamLogin = value_goes_here
+steamparental = 
