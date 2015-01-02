@@ -37,12 +37,25 @@ def _get_cookies(auth_data):
     }
 
 
+def _get_page(url, cookies=None):
+    page = requests.get(url, cookies=cookies)
+    return bs4.BeautifulSoup(page.text)
+
+
 def _get_badges_page(page_number, profile_name, cookies):
-    badges_page = requests.get(
+    return _get_page(
         "http://steamcommunity.com/profiles/" + profile_name +
         "/badges/?p=" + str(page_number),
-        cookies=cookies)
-    return bs4.BeautifulSoup(badges_page.text)
+        cookies=cookies
+    )
+
+
+def _get_badge_page(game_id, profile_name, cookies):
+    return _get_page(
+        "http://steamcommunity.com/profiles/" + profile_name +
+        "/gamecards/" + str(game_id),
+        cookies=cookies
+    )
 
 
 def _check_authorization(page):
@@ -62,10 +75,10 @@ def _gather_badges_data(profile_name, cookies):
 
         badges_page_data = _get_badges_page(current_page, profile_name, cookies)
 
-        if current_page == 1:
-            if not _check_authorization(badges_page_data):
-                raise Exception("Not authorized")
+        if not _check_authorization(badges_page_data):
+            raise Exception("Not authorized")
 
+        if current_page == 1:
             links = badges_page_data.find_all("a", {"class": "pagelink"})
             if links:
                 badge_pages_count = int(links[-1].text)
@@ -79,7 +92,21 @@ def _gather_badges_data(profile_name, cookies):
     return badges_data
 
 
-def gather_badges_info(blacklist, profile_name, cookies):
+def _parse_remaining_card_drops(page_part):
+    progress_info_data = page_part.find("span", {"class": "progress_info_bold"})
+    if not progress_info_data:
+        card_drops_remaining = None
+    else:
+        card_drops_text = progress_info_data.text.strip()
+        if "No card drops remaining" in card_drops_text:
+            card_drops_remaining = 0
+        else:
+            card_drops_remaining = int(card_drops_text.split(" ", 1)[0])
+
+    return card_drops_remaining
+
+
+def gather_badges_info(profile_name, cookies, blacklist=None, whitelist=None):
     badges = []
 
     for badge in _gather_badges_data(profile_name, cookies):
@@ -87,21 +114,17 @@ def gather_badges_info(blacklist, profile_name, cookies):
         badge_info["id"] = badge.find("a", {"class": "badge_row_overlay"})["href"].rsplit("/", 2)[1]
         badge_info["title"] = badge.find("div", {"class": "badge_title"}).contents[0].strip()
 
-        if blacklist is not None and badge_info["id"] in blacklist:
+        if whitelist and badge_info["id"] not in whitelist:
+            print("Skipped badge for not whitelisted game: {0}".format(badge_info["title"]))
+            continue
+
+        if blacklist and badge_info["id"] in blacklist:
             print("Skipped badge for blacklisted game: {0}".format(badge_info["title"]))
             continue
 
         title_stats = badge.find("div", {"class": "badge_title_stats"})
         if title_stats:
-            progress_info_data = title_stats.find("span", {"class": "progress_info_bold"})
-            if not progress_info_data:
-                badge_info["card_drops_remaining"] = 0
-            else:
-                card_drops_text = progress_info_data.text.strip()
-                if "No card drops remaining" in card_drops_text:
-                    badge_info["card_drops_remaining"] = 0
-                else:
-                    badge_info["card_drops_remaining"] = int(card_drops_text.split(" ", 1)[0])
+            badge_info["card_drops_remaining"] = _parse_remaining_card_drops(title_stats)
 
             playtime_info = title_stats.contents[0].strip()
             if "hrs on record" in playtime_info:
@@ -135,13 +158,28 @@ def gather_badges_info(blacklist, profile_name, cookies):
     return badges
 
 
-# TODO: parse badge page
+def get_game_remaining_drops(game_id, profile_name, cookies):
+    page = _get_badge_page(game_id, profile_name, cookies)
+
+    if not page:
+        raise Exception("Error getting badge page")
+
+    if not _check_authorization(page):
+        raise Exception("Not authorized")
+
+    card_drops_remaining = _parse_remaining_card_drops(page)
+
+    if card_drops_remaining is None:
+        raise Exception("Error getting remaining card drops info")
+
+    return card_drops_remaining
+
 
 def process_and_save_badges_info():
     auth_data = _get_auth_data()
     cookies = _get_cookies(auth_data)
 
-    badges = gather_badges_info(None, auth_data["profile_name"], cookies)
+    badges = gather_badges_info(auth_data["profile_name"], cookies)
 
     with open("badges_dump.json", "w") as f:
         json.dump(badges, f, indent=4)
@@ -150,3 +188,6 @@ def process_and_save_badges_info():
 
 
 process_and_save_badges_info()
+
+
+# TODO: add exception raising and handling
