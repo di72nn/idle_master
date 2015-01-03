@@ -1,12 +1,53 @@
 
 from operator import itemgetter
+import time
+from datetime import timedelta
 import json
+import sys
+import subprocess
+import logging
+import os
+
 import requests  # maybe replace request with urllib or something
 from bs4 import BeautifulSoup
 try:
     from ConfigParser import RawConfigParser  # python2
 except ImportError:
     from configparser import RawConfigParser  # python3
+
+
+def _fix_input():
+    # TODO: find another workaround
+    try:
+        global generic_input
+        generic_input = raw_input
+    except NameError:
+        generic_input = input
+
+
+def _set_working_directory():
+    os.chdir(os.path.abspath(os.path.dirname(sys.argv[0])))
+
+
+def _set_up_logging():
+    date_format = "%Y-%m-%d %H:%M:%S"
+    message_format = "%(asctime)s - %(levelname)s - %(message)s"
+
+    logging.basicConfig(
+        filename="idle_master.log", format=message_format,
+        datefmt=date_format, level=logging.DEBUG)
+
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(logging.Formatter(message_format, date_format))
+
+    logging.getLogger("").addHandler(ch)
+
+
+def _init():
+    _fix_input()
+    _set_working_directory()
+    _set_up_logging()
 
 
 def _get_auth_data(filename="idle_master_auth_data.txt"):
@@ -59,6 +100,12 @@ def _get_badge_page(game_id, profile_name, cookies):
     )
 
 
+def _get_game_name(game_id):
+    page = requests.get("http://store.steampowered.com/api/appdetails/" +
+                        "?filters=basic&appids=" + str(game_id))
+    return json.loads(page.text)[str(game_id)]["data"]["name"]
+
+
 def _check_authorization(page):
     return page.find("div", {"class": "user_avatar"}) is not None
 
@@ -70,9 +117,10 @@ def _gather_badges_data(profile_name, cookies):
     badge_pages_count = 1
     while current_page <= badge_pages_count:
         if badge_pages_count == 1:
-            print("Requesting badges page")
+            logging.info("Requesting badges page")
         else:
-            print("Requesting badges page {0} of {1}".format(current_page, badge_pages_count))
+            logging.info("Requesting badges page {0} of {1}".
+                         format(current_page, badge_pages_count))
 
         badges_page_data = _get_badges_page(current_page, profile_name, cookies)
 
@@ -83,9 +131,9 @@ def _gather_badges_data(profile_name, cookies):
             links = badges_page_data.find_all("a", {"class": "pagelink"})
             if links:
                 badge_pages_count = int(links[-1].text)
-                print("Found {0} more page(s)".format(badge_pages_count - 1))
+                logging.info("Found {0} more page(s)".format(badge_pages_count - 1))
 
-        print("Processing badges page")
+        logging.info("Processing badges page")
         badges_data += badges_page_data.find_all("div", {"class": "badge_row"})
 
         current_page += 1
@@ -196,7 +244,7 @@ def _write_id_list_to_file(id_list, filename):
 
 def _read_id_list_from_file(filename):
     with(open(filename)) as f:
-        return [float(line.rstrip("\n")) for line in f]
+        return [int(line.rstrip("\n")) for line in f]
 
 
 def _gather_badges_info(profile_name, cookies, blacklist=None, whitelist=None):
@@ -217,11 +265,11 @@ def _gather_badges_info(profile_name, cookies, blacklist=None, whitelist=None):
         badge_info["title"] = badge.find("div", {"class": "badge_title"}).contents[0].strip()
 
         if whitelist and badge_info["id"] not in whitelist:
-            print("Skipped badge for not whitelisted game: {0}".format(badge_info["title"]))
+            logging.info("Skipped badge for not whitelisted game: {0}".format(badge_info["title"]))
             continue
 
         if blacklist and badge_info["id"] in blacklist:
-            print("Skipped badge for blacklisted game: {0}".format(badge_info["title"]))
+            logging.info("Skipped badge for blacklisted game: {0}".format(badge_info["title"]))
             continue
 
         title_stats = badge.find("div", {"class": "badge_title_stats"})
@@ -260,6 +308,188 @@ def _gather_badges_info(profile_name, cookies, blacklist=None, whitelist=None):
     return badges
 
 
+def _idle(idle_list, profile_name, cookies):
+    idling = False
+
+    index = -1
+    while index < len(idle_list) - 1:
+        index += 1
+        game_id = idle_list[index]
+
+        if idling:
+            raise Exception("Still idling previous game, something went wrong")
+
+        try:
+            game_name = _get_game_name(game_id)
+        except Exception as e:
+            logging.warning("Exception on getting game name: {}".format(e))
+
+        logging.info('Processing game "{0}" ({1})'.format(game_name, game_id))
+
+        command_skip = False
+        command_keep = False
+        command_quit = False
+
+        remaining_card_drops = 1000
+
+        idling_process = None
+        idle_start_time = time.time()  # not necessary
+        last_idle_time = 0
+
+        last_remaining_card_drops = 1000
+        last_drop_time = time.time()
+        first_time_error_occurred = time.time()
+        erroneous_state = False
+        erroneous_time_multiplier = 1
+        while last_drop_time + 5 * 60 * 60 > time.time():
+            try:
+                remaining_card_drops = get_game_remaining_card_drops(
+                    game_id, profile_name, cookies
+                )
+
+                if erroneous_state:
+                    erroneous_state = False
+                    erroneous_time_multiplier = 1
+                    logging.warning("Recovered from erroneous state")
+            except Exception as e:
+                logging.warning("Exception on getting remaining card drops: {}".format(e))
+                if not erroneous_state:
+                    erroneous_state = True
+                    first_time_error_occurred = time.time()
+                elif first_time_error_occurred + 5 * 60 > time.time():
+                    _stop_idling(idling_process)
+                    idling = False
+                    last_idle_time += time.time() - idle_start_time
+                elif first_time_error_occurred + 24 * 60 * 60 > time.time():
+                    break
+
+            if remaining_card_drops < last_remaining_card_drops:
+                if last_remaining_card_drops != 1000:
+                    logging.info("Card was dropped")
+                last_remaining_card_drops = remaining_card_drops
+                last_drop_time = time.time()
+
+                logging.info("Card drops remaining: {}".format(remaining_card_drops))
+
+            if not remaining_card_drops:
+                break
+
+            if not idling:
+                idling_process = _start_idling(game_id)
+                idling = True
+                idle_start_time = time.time()
+
+            if erroneous_state:
+                sleep_time = 60 * erroneous_time_multiplier
+                erroneous_time_multiplier *= 2
+            elif remaining_card_drops > 1:
+                sleep_time = 10 * 60
+            else:
+                sleep_time = 5 * 60
+
+            logging.info("Gonna sleep {} seconds".format(sleep_time))
+            try:
+                time.sleep(sleep_time)
+            except KeyboardInterrupt:
+                logging.warning("Sleep interrupted by user")
+                logging.warning(
+                    "Input command and press Enter\n" +
+                    " p [n] - pause for n minutes (default: 5)\n" +
+                    " n - next (move current game to the end of list)\n" +
+                    " s - skip (remove current game from list)\n" +
+                    " q - quit")
+                try:
+                    command = generic_input("> ").strip()
+                except KeyboardInterrupt:
+                    command = ""
+
+                logging.debug('Got command from user: "{}"'.format(command))
+                if command.startswith("p"):
+                    sleep_time = 5
+                    splitted = command.split(" ")
+                    if len(splitted) > 1:
+                        try:
+                            sleep_time = int(splitted[1])
+                        except ValueError:
+                            pass
+                    sleep_time *= 60
+
+                    _stop_idling(idling_process)
+                    idling = False
+                    last_idle_time += time.time() - idle_start_time
+
+                    try:
+                        time.sleep(sleep_time)
+                    except KeyboardInterrupt:
+                        pass
+                elif command == "n":
+                    command_skip = True
+                    command_keep = True
+                    break
+                elif command == "s":
+                    command_skip = True
+                    break
+                elif command == "q":
+                    command_quit = True
+                    break
+
+        if idling:
+            _stop_idling(idling_process)
+            idling = False
+            last_idle_time += time.time() - idle_start_time
+
+        if command_quit:
+            break
+
+        if not command_skip:
+            if erroneous_state:
+                logging.warning("Stopped idling game because of continuous errors")
+            elif remaining_card_drops:
+                logging.warning("Stopped idling game because drop timeout was reached")
+            else:
+                logging.info('Successfully finished idling "{0}", idling time: {1}'.
+                             format(game_name, timedelta(seconds=last_idle_time)))
+
+        if command_keep:
+            logging.info('Moving game "{0}" ({1}) to the end of idle list'.
+                         format(game_name, game_id))
+        else:
+            logging.info('Removing game "{0}" ({1}) from idle list'.
+                         format(game_name, game_id))
+        idle_list.remove(index)
+        index -= 1
+
+        if command_keep:
+            idle_list.append(game_id)
+
+        logging.info("Games left {0}".format(len(idle_list)))
+
+    if idle_list:
+        logging.info("Stopped idling list")
+    else:
+        logging.info("Finished idling list")
+
+    return idle_list
+
+
+def _start_idling(game_id):
+    if sys.platform.startswith("win32"):
+        args = ["steam-idle.exe"]
+    elif sys.platform.startswith("darwin"):
+        args = ["./steam-idle"]
+    elif sys.platform.startswith("linux"):
+        args = ["python", "steam-idle.py"]
+    else:
+        raise Exception("Unsupported platform: {}".format(sys.platform))
+    args.append(str(game_id))
+
+    return subprocess.Popen(args)
+
+
+def _stop_idling(idling_process):
+    idling_process.terminate()
+
+
 def gather_badges_info(blacklist=None, whitelist=None):
     auth_data = _get_auth_data()
     cookies = _get_cookies(auth_data)
@@ -268,7 +498,7 @@ def gather_badges_info(blacklist=None, whitelist=None):
                                blacklist=blacklist, whitelist=whitelist)
 
 
-def get_game_remaining_drops(game_id, profile_name, cookies):
+def get_game_remaining_card_drops(game_id, profile_name, cookies):
     page = _get_badge_page(game_id, profile_name, cookies)
 
     if not page:
@@ -291,7 +521,7 @@ def process_and_save_badges_info():
     with open("badges_dump.json", "w") as f:
         json.dump(badges, f, indent=4)
 
-    print("Saved")
+    logging.info("Saved")
 
 
 def generate_idle_list(
@@ -314,11 +544,26 @@ def generate_idle_list(
     return idle_list
 
 
+def idle_from_file(filename):
+    auth_data = _get_auth_data()
+    cookies = _get_cookies(auth_data)
+
+    idle_list = _read_id_list_from_file(filename)
+
+    idle_list = _idle(idle_list, auth_data["profile_name"], cookies)
+
+    _write_id_list_to_file(idle_list, filename)
+
+
+_init()
+
 # process_and_save_badges_info()
 
 # print(generate_idle_list(
 #     filename="badges_dump.json", output_file_name="play.lst",
 #     filters=["games_only", "with_remaining_card_drops"]))
 
+idle_from_file("play.lst")
 
-# TODO: add exception raising and handling
+
+# TODO: add custom exceptions and rewrite exception handling
