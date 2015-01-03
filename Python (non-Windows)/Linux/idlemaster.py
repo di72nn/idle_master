@@ -1,11 +1,12 @@
 
+from operator import itemgetter
+import json
 import requests  # maybe replace request with urllib or something
-import bs4
+from bs4 import BeautifulSoup
 try:
     from ConfigParser import RawConfigParser  # python2
 except ImportError:
     from configparser import RawConfigParser  # python3
-import json
 
 
 def _get_auth_data(filename="idle_master_auth_data.txt"):
@@ -39,7 +40,7 @@ def _get_cookies(auth_data):
 
 def _get_page(url, cookies=None):
     page = requests.get(url, cookies=cookies)
-    return bs4.BeautifulSoup(page.text)
+    return BeautifulSoup(page.text)
 
 
 def _get_badges_page(page_number, profile_name, cookies):
@@ -106,12 +107,113 @@ def _parse_remaining_card_drops(page_part):
     return card_drops_remaining
 
 
-def gather_badges_info(profile_name, cookies, blacklist=None, whitelist=None):
+def _get_average_card_price(game_id):
+    result = requests.get(
+        "http://api.enhancedsteam.com/market_data/average_card_price/" +
+        "?cur=usd&appid=" + str(game_id))
+    try:
+        return float(result.text)
+    except ValueError:
+        raise Exception("Couldn't get average card price for game_id: " +
+                        str(game_id))
+
+
+def _generate_idle_list(badges_data, blacklist=None, whitelist=None,
+                        filters=None, sort=None):
+    games_only = False
+    with_remaining_card_drops = False
+    only_with_playtime = False
+    if filters:
+        for flt in filters:
+            if flt == "games_only":
+                games_only = True
+            elif flt == "with_remaining_card_drops":
+                with_remaining_card_drops = True
+            elif flt == "has_playtime":
+                only_with_playtime = True
+            else:
+                raise Exception('Filter "{0}" is not supported'.format(flt))
+
+    sort_type = None
+    sort_reverse = True
+    if sort:
+        if sort == "least_remaining_drops":
+            sort_type = 1
+            sort_reverse = False
+        elif sort == "most_remaining_drops":
+            sort_type = 1
+            sort_reverse = True
+        elif sort == "least_avg_card_price":
+            sort_type = 2
+            sort_reverse = False
+        elif sort == "most_avg_card_price":
+            sort_type = 2
+            sort_reverse = True
+        else:
+            raise Exception('Sort method "{0}" is not supported'.format(sort))
+
+    tmp_list = [] if sort_type else None
+    idle_list = []
+
+    for badge_info in badges_data:
+        if whitelist and badge_info["id"] not in whitelist:
+            continue
+        if blacklist and badge_info["id"] in blacklist:
+            continue
+
+        if games_only and not badge_info["is_game"]:
+            continue
+        if with_remaining_card_drops and not badge_info["card_drops_remaining"]:
+            continue
+        if only_with_playtime and not badge_info["playtime"]:
+            continue
+
+        if sort_type is 1:
+            sort_value = badge_info["card_drops_remaining"]
+        elif sort_type is 2:
+            sort_value = _get_average_card_price(badge_info["id"])
+        else:
+            sort_value = None
+
+        if sort_type:
+            tmp_list.append((badge_info["id"], sort_value))
+        else:
+            idle_list.append(badge_info["id"])
+
+    if sort_type:
+        tmp_list.sort(key=itemgetter(1), reverse=sort_reverse)
+
+        idle_list = [game_id for game_id, value in tmp_list]
+
+    return idle_list
+
+
+def _write_id_list_to_file(id_list, filename):
+    with open(filename, "w") as f:
+        for game_id in id_list:
+            f.write("{}\n".format(game_id))
+
+
+def _read_id_list_from_file(filename):
+    with(open(filename)) as f:
+        return [float(line.rstrip("\n")) for line in f]
+
+
+def _gather_badges_info(profile_name, cookies, blacklist=None, whitelist=None):
     badges = []
 
     for badge in _gather_badges_data(profile_name, cookies):
         badge_info = dict()
-        badge_info["id"] = badge.find("a", {"class": "badge_row_overlay"})["href"].rsplit("/", 2)[1]
+        link = badge.find("a", {"class": "badge_row_overlay"})["href"]
+        splitted = link.split("/")
+        badge_info["id"] = int(splitted[6]) if len(splitted) >= 7 else -1
+
+        if "gamecards" in link:
+            is_game = True
+        else:
+            is_game = False
+        badge_info["is_game"] = is_game
+
         badge_info["title"] = badge.find("div", {"class": "badge_title"}).contents[0].strip()
 
         if whitelist and badge_info["id"] not in whitelist:
@@ -158,6 +260,14 @@ def gather_badges_info(profile_name, cookies, blacklist=None, whitelist=None):
     return badges
 
 
+def gather_badges_info(blacklist=None, whitelist=None):
+    auth_data = _get_auth_data()
+    cookies = _get_cookies(auth_data)
+
+    return _gather_badges_info(auth_data["profile_name"], cookies,
+                               blacklist=blacklist, whitelist=whitelist)
+
+
 def get_game_remaining_drops(game_id, profile_name, cookies):
     page = _get_badge_page(game_id, profile_name, cookies)
 
@@ -176,10 +286,7 @@ def get_game_remaining_drops(game_id, profile_name, cookies):
 
 
 def process_and_save_badges_info():
-    auth_data = _get_auth_data()
-    cookies = _get_cookies(auth_data)
-
-    badges = gather_badges_info(auth_data["profile_name"], cookies)
+    badges = gather_badges_info()
 
     with open("badges_dump.json", "w") as f:
         json.dump(badges, f, indent=4)
@@ -187,7 +294,31 @@ def process_and_save_badges_info():
     print("Saved")
 
 
-process_and_save_badges_info()
+def generate_idle_list(
+        filename=None, output_file_name=None, blacklist=None,
+        whitelist=None, filters=None, sort=None):
+    if filename:
+        with open(filename) as f:
+            badges_data = json.load(f)
+    else:
+        badges_data = gather_badges_info()
+
+    idle_list = _generate_idle_list(
+        badges_data, blacklist=blacklist, whitelist=whitelist,
+        filters=filters, sort=sort
+    )
+
+    if output_file_name:
+        _write_id_list_to_file(idle_list, output_file_name)
+
+    return idle_list
+
+
+# process_and_save_badges_info()
+
+# print(generate_idle_list(
+#     filename="badges_dump.json", output_file_name="play.lst",
+#     filters=["games_only", "with_remaining_card_drops"]))
 
 
 # TODO: add exception raising and handling
