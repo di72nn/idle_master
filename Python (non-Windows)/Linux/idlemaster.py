@@ -456,7 +456,7 @@ def _idle(idle_list, profile_name, cookies):
         else:
             logging.info('Removing game "{0}" ({1}) from idle list'.
                          format(game_name, game_id))
-        idle_list.remove(index)
+        idle_list.pop(index)
         index -= 1
 
         if command_keep:
