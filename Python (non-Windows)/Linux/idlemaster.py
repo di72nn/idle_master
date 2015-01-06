@@ -16,13 +16,7 @@ except ImportError:
     from configparser import RawConfigParser  # python3
 
 
-def _fix_input():
-    # TODO: find another workaround
-    try:
-        global generic_input
-        generic_input = raw_input
-    except NameError:
-        generic_input = input
+_input = vars(__builtins__).get("raw_input", input)
 
 
 def _set_working_directory():
@@ -45,7 +39,6 @@ def _set_up_logging():
 
 
 def _init():
-    _fix_input()
     _set_working_directory()
     _set_up_logging()
 
@@ -387,7 +380,8 @@ def _idle(idle_list, profile_name, cookies):
             else:
                 sleep_time = 5 * 60
 
-            logging.info("Gonna sleep {} seconds".format(sleep_time))
+            logging.info("Gonna sleep for {} seconds".format(sleep_time))
+            logging.info("Press Ctrl+C to interrupt sleep and issue a command")
             try:
                 time.sleep(sleep_time)
             except KeyboardInterrupt:
@@ -399,8 +393,8 @@ def _idle(idle_list, profile_name, cookies):
                     " s - skip (remove current game from list)\n" +
                     " q - quit")
                 try:
-                    command = generic_input("> ").strip()
-                except KeyboardInterrupt:
+                    command = _input("> ").strip()
+                except KeyboardInterrupt or EOFError:
                     command = ""
 
                 logging.debug('Got command from user: "{}"'.format(command))
@@ -418,6 +412,8 @@ def _idle(idle_list, profile_name, cookies):
                     idling = False
                     last_idle_time += time.time() - idle_start_time
 
+                    logging.info("Paused for {} seconds".format(sleep_time))
+                    logging.info("Press Ctrl+C to resume")
                     try:
                         time.sleep(sleep_time)
                     except KeyboardInterrupt:
@@ -488,6 +484,7 @@ def _start_idling(game_id):
 
 def _stop_idling(idling_process):
     idling_process.terminate()
+    idling_process.wait()
 
 
 def gather_badges_info(blacklist=None, whitelist=None):
@@ -515,10 +512,10 @@ def get_game_remaining_card_drops(game_id, profile_name, cookies):
     return card_drops_remaining
 
 
-def process_and_save_badges_info():
+def process_and_save_badges_info(filename):
     badges = gather_badges_info()
 
-    with open("badges_dump.json", "w") as f:
+    with open(filename, "w") as f:
         json.dump(badges, f, indent=4)
 
     logging.info("Saved")
@@ -555,15 +552,19 @@ def idle_from_file(filename):
     _write_id_list_to_file(idle_list, filename)
 
 
-_init()
+def main(argv):
+    _init()
+    # process_and_save_badges_info("badges_dump.json")
+    #
+    # print(generate_idle_list(
+    #     filename="badges_dump.json", output_file_name="idle.lst",
+    #     filters=["games_only", "with_remaining_card_drops"]))
+    #
+    idle_from_file("idle.lst")
 
-# process_and_save_badges_info()
 
-# print(generate_idle_list(
-#     filename="badges_dump.json", output_file_name="play.lst",
-#     filters=["games_only", "with_remaining_card_drops"]))
-
-idle_from_file("play.lst")
+if __name__ == "__main__":
+    main(sys.argv)
 
 
 # TODO: add custom exceptions and rewrite exception handling
