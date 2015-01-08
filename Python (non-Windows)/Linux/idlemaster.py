@@ -552,19 +552,27 @@ def idle_from_file(filename):
     _write_id_list_to_file(idle_list, filename)
 
 
+# TODO: rewrite
+def automatic_mode():
+    idle_list_filename = "idle_list.txt"
+    if not os.path.isfile(idle_list_filename):
+        generate_idle_list(
+            output_file_name=idle_list_filename,
+            filters=["games_only", "with_remaining_card_drops"]
+        )
+
+    idle_from_file(idle_list_filename)
+
+
 def main(argv):
     _init()
-    # process_and_save_badges_info("badges_dump.json")
-    #
-    # print(generate_idle_list(
-    #     filename="badges_dump.json", output_file_name="idle.lst",
-    #     filters=["games_only", "with_remaining_card_drops"]))
-    #
-    idle_from_file("idle.lst")
+
+    automatic_mode()
 
 
 if __name__ == "__main__":
     main(sys.argv)
 
 
+# TODO: add command line options
 # TODO: add custom exceptions and rewrite exception handling
