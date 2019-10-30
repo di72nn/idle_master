@@ -19,6 +19,15 @@ except ImportError:
 _input = vars(__builtins__).get("raw_input", input)
 
 
+FILTER_NOT_ONLY_GAMES = "not_only_games"
+FILTER_NOT_ONLY_WITH_CARD_DROPS = "not_only_with_remaining_card_drops"
+FILTER_WITH_PLAYTIME = "with_playtime"
+SORT_MOST_REMAINING_DROPS = "most_remaining_drops"
+SORT_LEAST_REMAINING_DROPS = "least_remaining_drops"
+SORT_MOST_AVERAGE_CARD_PRICE = "most_avg_card_price"
+SORT_LEAST_AVERAGE_CARD_PRICE = "least_avg_card_price"
+
+
 def _set_working_directory():
     os.chdir(os.path.abspath(os.path.dirname(sys.argv[0])))
 
@@ -161,33 +170,33 @@ def _get_average_card_price(game_id):
 
 def _generate_idle_list(badges_data, blacklist=None, whitelist=None,
                         filters=None, sort=None):
-    games_only = False
-    with_remaining_card_drops = False
-    only_with_playtime = False
+    games_only = True
+    with_remaining_card_drops = True
+    with_playtime = False
     if filters:
         for flt in filters:
-            if flt == "games_only":
-                games_only = True
-            elif flt == "with_remaining_card_drops":
-                with_remaining_card_drops = True
-            elif flt == "has_playtime":
-                only_with_playtime = True
+            if flt == FILTER_NOT_ONLY_GAMES:
+                games_only = False
+            elif flt == FILTER_NOT_ONLY_WITH_CARD_DROPS:
+                with_remaining_card_drops = False
+            elif flt == FILTER_WITH_PLAYTIME:
+                with_playtime = True
             else:
                 raise Exception('Filter "{0}" is not supported'.format(flt))
 
     sort_type = None
     sort_reverse = True
     if sort:
-        if sort == "least_remaining_drops":
+        if sort == SORT_LEAST_REMAINING_DROPS:
             sort_type = 1
             sort_reverse = False
-        elif sort == "most_remaining_drops":
+        elif sort == SORT_MOST_REMAINING_DROPS:
             sort_type = 1
             sort_reverse = True
-        elif sort == "least_avg_card_price":
+        elif sort == SORT_LEAST_AVERAGE_CARD_PRICE:
             sort_type = 2
             sort_reverse = False
-        elif sort == "most_avg_card_price":
+        elif sort == SORT_MOST_AVERAGE_CARD_PRICE:
             sort_type = 2
             sort_reverse = True
         else:
@@ -206,7 +215,7 @@ def _generate_idle_list(badges_data, blacklist=None, whitelist=None,
             continue
         if with_remaining_card_drops and not badge_info["card_drops_remaining"]:
             continue
-        if only_with_playtime and not badge_info["playtime"]:
+        if with_playtime and not badge_info["playtime"]:
             continue
 
         if sort_type is 1:
@@ -391,7 +400,8 @@ def _idle(idle_list, profile_name, cookies):
                     " p [n] - pause for n minutes (default: 5)\n" +
                     " n - next (move current game to the end of list)\n" +
                     " s - skip (remove current game from list)\n" +
-                    " q - quit")
+                    " q - quit\n" +
+                    "(anything else - recheck remaining cards and continue idling)")
                 try:
                     command = _input("> ").strip()
                 except KeyboardInterrupt or EOFError:
@@ -556,10 +566,7 @@ def idle_from_file(filename):
 def automatic_mode():
     idle_list_filename = "idle_list.txt"
     if not os.path.isfile(idle_list_filename):
-        generate_idle_list(
-            output_file_name=idle_list_filename,
-            filters=["games_only", "with_remaining_card_drops"]
-        )
+        generate_idle_list(output_file_name=idle_list_filename)
 
     idle_from_file(idle_list_filename)
 
