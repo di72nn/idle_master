@@ -109,7 +109,7 @@ def _get_game_name(game_id):
 
 
 def _check_authorization(page):
-    return page.find("div", {"class": "user_avatar"}) is not None
+    return page.find("a", {"class": "user_avatar"}) is not None
 
 
 def _gather_badges_data(profile_name, cookies):
@@ -278,9 +278,9 @@ def _gather_badges_info(profile_name, cookies, blacklist=None, whitelist=None):
         if title_stats:
             badge_info["card_drops_remaining"] = _parse_remaining_card_drops(title_stats)
 
-            playtime_info = title_stats.contents[0].strip()
+            playtime_info = title_stats.find("div", {"class": "badge_title_stats_playtime"}).string
             if "hrs on record" in playtime_info:
-                badge_info["playtime"] = float(playtime_info.split(" ", 1)[0])
+                badge_info["playtime"] = float(playtime_info.split(" ", 1)[0].strip())
             else:
                 badge_info["playtime"] = 0
         else:
@@ -324,6 +324,7 @@ def _idle(idle_list, profile_name, cookies):
         try:
             game_name = _get_game_name(game_id)
         except Exception as e:
+            game_name = '<Unknown>'
             logging.warning("Exception on getting game name: {}".format(e))
 
         logging.info('Processing game "{0}" ({1})'.format(game_name, game_id))
