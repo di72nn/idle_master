@@ -490,7 +490,7 @@ def _start_idling(game_id):
         raise Exception("Unsupported platform: {}".format(sys.platform))
     args.append(str(game_id))
 
-    return subprocess.Popen(args)
+    return subprocess.Popen(args, start_new_session=True)
 
 
 def _stop_idling(idling_process):
