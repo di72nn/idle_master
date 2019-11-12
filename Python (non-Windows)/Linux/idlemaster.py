@@ -83,7 +83,7 @@ def _get_cookies(auth_data):
 
 def _get_page(url, cookies=None):
     page = requests.get(url, cookies=cookies)
-    return BeautifulSoup(page.text)
+    return BeautifulSoup(page.text, "html.parser")
 
 
 def _get_badges_page(page_number, profile_name, cookies):
