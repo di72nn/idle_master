@@ -28,6 +28,10 @@ SORT_MOST_AVERAGE_CARD_PRICE = "most_avg_card_price"
 SORT_LEAST_AVERAGE_CARD_PRICE = "least_avg_card_price"
 
 
+class NotAuthorizedException(Exception):
+    pass
+
+
 def _set_working_directory():
     os.chdir(os.path.abspath(os.path.dirname(sys.argv[0])))
 
@@ -127,7 +131,7 @@ def _gather_badges_data(profile_name, cookies):
         badges_page_data = _get_badges_page(current_page, profile_name, cookies)
 
         if not _check_authorization(badges_page_data):
-            raise Exception("Not authorized")
+            raise NotAuthorizedException("Not authorized")
 
         if current_page == 1:
             links = badges_page_data.find_all("a", {"class": "pagelink"})
@@ -354,6 +358,10 @@ def _idle(idle_list, profile_name, cookies):
                     erroneous_state = False
                     erroneous_time_multiplier = 1
                     logging.warning("Recovered from erroneous state")
+            except NotAuthorizedException:
+                logging.warning("Not authorized, stopping idling")
+                command_quit = True
+                break
             except Exception as e:
                 logging.warning("Exception on getting remaining card drops: {}".format(e))
                 if not erroneous_state:
@@ -513,7 +521,7 @@ def get_game_remaining_card_drops(game_id, profile_name, cookies):
         raise Exception("Error getting badge page")
 
     if not _check_authorization(page):
-        raise Exception("Not authorized")
+        raise NotAuthorizedException("Not authorized")
 
     card_drops_remaining = _parse_remaining_card_drops(page)
 
