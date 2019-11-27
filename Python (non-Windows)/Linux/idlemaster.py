@@ -8,12 +8,8 @@ import subprocess
 import logging
 import os
 
-import requests  # maybe replace request with urllib or something
+import requests
 from bs4 import BeautifulSoup
-try:
-    from ConfigParser import RawConfigParser  # python2
-except ImportError:
-    from configparser import RawConfigParser  # python3
 
 
 _input = vars(__builtins__).get("raw_input", input)
@@ -56,33 +52,25 @@ def _init():
     _set_up_logging()
 
 
-def _get_auth_data(filename="idle_master_auth_data.txt"):
-    config = RawConfigParser()
-    config.read(filename)
+def _get_auth_data(filename="config.json"):
+    with open(filename) as f:
+        config = json.load(f)
 
-    section_name = "cookies"
-    if not config.has_section(section_name):
-        raise Exception("Illegal config file")
-    if(not config.has_option(section_name, "sessionid") or
-       not config.has_option(section_name, "steamLogin")):
-        raise Exception("Session ID and/or Steam Login is/are not set")
+    cookies = config.get("cookies")
+    if cookies is None:
+        raise Exception('Incorrect config file: no "cookies" section')
 
-    data = {
-        "sessionid": config.get(section_name, "sessionid"),
-        "steamLogin": config.get(section_name, "steamLogin")
+    if not cookies.get("steamRememberLogin") and not cookies.get("steamLoginSecure"):
+        raise Exception("Neither steamRememberLogin nor steamLoginSecure is set")
+
+    return {
+        "cookies": cookies,
+        "profile_name": (cookies["steamRememberLogin"] or cookies["steamLoginSecure"])[:17]
     }
-    if config.has_option(section_name, "steamparental"):
-        data["steamparental"] = config.get(section_name, "steamparental")
-    data["profile_name"] = data["steamLogin"][:17]
-    return data
 
 
 def _get_cookies(auth_data):
-    return {
-        "sessionid": auth_data["sessionid"],
-        "steamLogin": auth_data["steamLogin"],
-        "steamparental": auth_data["steamparental"]
-    }
+    return auth_data["cookies"]
 
 
 def _get_page(url, cookies=None):
