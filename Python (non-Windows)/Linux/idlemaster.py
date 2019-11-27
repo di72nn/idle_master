@@ -92,7 +92,7 @@ def _get_page(url, cookies=None):
 
 def _get_badges_page(page_number, profile_name, cookies):
     return _get_page(
-        "http://steamcommunity.com/profiles/" + profile_name +
+        "https://steamcommunity.com/profiles/" + profile_name +
         "/badges/?p=" + str(page_number),
         cookies=cookies
     )
@@ -100,14 +100,14 @@ def _get_badges_page(page_number, profile_name, cookies):
 
 def _get_badge_page(game_id, profile_name, cookies):
     return _get_page(
-        "http://steamcommunity.com/profiles/" + profile_name +
+        "https://steamcommunity.com/profiles/" + profile_name +
         "/gamecards/" + str(game_id),
         cookies=cookies
     )
 
 
 def _get_game_name(game_id):
-    page = requests.get("http://store.steampowered.com/api/appdetails/" +
+    page = requests.get("https://store.steampowered.com/api/appdetails/" +
                         "?filters=basic&appids=" + str(game_id))
     return json.loads(page.text)[str(game_id)]["data"]["name"]
 
