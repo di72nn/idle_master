@@ -1,28 +1,28 @@
-Idle Master
-===========
+# Idle Master
 
-This program will determine which of your Steam games still have Steam Trading Card drops remaining, and will go through each application to simulate you being “in-game” so that cards will drop.  It will check periodically to see if the game you’re idling has card drops remaining.  When only one drop remains, it will start checking more frequently.  When the game you’re idling has no more cards, it’ll move on to the next game.  When no more cards are available, the program will terminate.
+A simple Steam Trading Cards farming script.
+See [jshackles/idle_master_py](https://github.com/jshackles/idle_master_py) for details on the original project.
 
-Requirements
--------
+This is a script I wrote years ago when I wanted to farm Steam Cards,
+but the aforementioned project didn't suit me for some reason.
+I updated it recently to adapt it to the changes Steam made.
 
-This application requires Steam to be open and for you to be logged in.  This program is now being developed exclusively for Microsoft Windows.
+Seems to be running ok on Linux, didn't test it on other platforms.
 
-Non-Windows versions are available in the "Python (non-Windows)" folder but may be depricated or feature incomplete.
+## Requirements
 
-Setup
--------
+`requests`, `beautifulsoup4`, `pillow`, `tk`.
 
-If you are an end user you can download an install Idle Master directly from http://www.steamidlemaster.com or by launching setup.exe included in the root of this repository.  You can also download the source repository above and compile the application using Microsoft Visual Studio.
+## Setup
 
-Credits
--------
+Put Steam cookies into `config.json`.
 
-Idle Master was created jshackles, based on the original code created by Stumpokapow.
+Run `python idlemaster.py`.
 
-Idle Master was writen in C# using Steamworks.NET and CSteamworks by Riley Labrecque (https://github.com/rlabrecque/CSteamworks), and using open source icons from Open Iconic (https://github.com/iconic/open-iconic).
+## Credits
 
-License
--------
+Based on the original code by jshackles, Stumpokapow, et al.
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation.  A copy of the GNU General Public License can be found at http://www.gnu.org/licenses/.  For your convenience, a copy of this license is included.
+## License
+
+GPLv2.
