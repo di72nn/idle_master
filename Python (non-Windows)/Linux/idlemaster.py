@@ -222,9 +222,9 @@ def _generate_idle_list(badges_data, blacklist=None, whitelist=None,
         if with_playtime and not badge_info["playtime"]:
             continue
 
-        if sort_type is 1:
+        if sort_type == 1:
             sort_value = badge_info["card_drops_remaining"]
-        elif sort_type is 2:
+        elif sort_type == 2:
             sort_value = _get_average_card_price(badge_info["id"])
         else:
             sort_value = None
