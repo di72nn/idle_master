@@ -305,6 +305,9 @@ def _gather_badges_info(profile_name, cookies, blacklist=None, whitelist=None):
 def _idle(idle_list, profile_name, cookies):
     idling = False
 
+    erroneous_state = False
+    first_time_error_occurred = time.time()
+
     index = -1
     while index < len(idle_list) - 1:
         index += 1
@@ -333,8 +336,6 @@ def _idle(idle_list, profile_name, cookies):
 
         last_remaining_card_drops = 1000
         last_drop_time = time.time()
-        first_time_error_occurred = time.time()
-        erroneous_state = False
         erroneous_time_multiplier = 1
         while last_drop_time + 5 * 60 * 60 > time.time():
             try:
@@ -345,22 +346,20 @@ def _idle(idle_list, profile_name, cookies):
                 if erroneous_state:
                     erroneous_state = False
                     erroneous_time_multiplier = 1
-                    logging.warning("Recovered from erroneous state")
-            except NotAuthorizedException:
-                logging.warning("Not authorized, stopping idling")
-                command_quit = True
-                break
+                    logging.info("Recovered from erroneous state")
             except Exception as e:
                 logging.warning("Exception on getting remaining card drops: {}".format(e))
                 if not erroneous_state:
                     erroneous_state = True
                     first_time_error_occurred = time.time()
-                elif first_time_error_occurred + 5 * 60 > time.time():
+                elif first_time_error_occurred + 24 * 60 * 60 <= time.time():  # a day
+                    logging.warning("In erroneous state for too long, quiting")
+                    command_quit = True
+                    break
+                elif first_time_error_occurred + 5 * 60 <= time.time():  # 5 minutes
                     _stop_idling(idling_process)
                     idling = False
                     last_idle_time += time.time() - idle_start_time
-                elif first_time_error_occurred + 24 * 60 * 60 > time.time():
-                    break
 
             if remaining_card_drops < last_remaining_card_drops:
                 if last_remaining_card_drops != 1000:
@@ -447,6 +446,7 @@ def _idle(idle_list, profile_name, cookies):
         if not command_skip:
             if erroneous_state:
                 logging.warning("Stopped idling game because of continuous errors")
+                command_keep = True
             elif remaining_card_drops:
                 logging.warning("Stopped idling game because drop timeout was reached")
             else:
