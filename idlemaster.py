@@ -390,8 +390,8 @@ def _idle(idle_list, profile_name, cookies):
             try:
                 time.sleep(sleep_time)
             except KeyboardInterrupt:
-                logging.warning("Sleep interrupted by user")
-                logging.warning(
+                logging.info("Sleep interrupted by user")
+                logging.info(
                     "Input command and press Enter\n" +
                     " p [n] - pause for n minutes (default: 5)\n" +
                     " n - next (move current game to the end of list)\n" +
